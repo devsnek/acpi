@@ -282,6 +282,26 @@ where
         self.revision
     }
 
+    /// Finds and returns the AML table for the given signature, if it exists.
+    pub fn find_sdt(&self, signature: Signature, index: usize) -> AcpiResult<AmlTable> {
+        let mut counter = 0;
+        self.tables_phys_ptrs()
+            .find_map(|table_phys_ptr| {
+                // SAFETY: Table guarantees its contained addresses to be valid.
+                let header_mapping = unsafe {
+                    self.handler.map_physical_region::<SdtHeader>(table_phys_ptr as _, mem::size_of::<SdtHeader>())
+                };
+                if header_mapping.signature == signature {
+                    if counter == index {
+                        return Some(AmlTable::new(table_phys_ptr as _, header_mapping.length));
+                    }
+                    counter += 1;
+                }
+                None
+            })
+            .ok_or(AcpiError::TableMissing(signature))
+    }
+
     /// Constructs a [`TablesPhysPtrsIter`] over this table.
     fn tables_phys_ptrs(&self) -> TablesPhysPtrsIter<'_> {
         // SAFETY: The virtual address of the array of pointers follows the virtual address of the table in memory.
